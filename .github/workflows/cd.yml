@@ -1,0 +1,52 @@
+name: CD
+on:
+  push:
+    branches:
+    - main
+    tags:        
+    - v*
+
+jobs:
+  version:
+    outputs:
+      next: ${{steps.release.outputs.next}}
+      current: ${{steps.release.outputs.current}}
+    runs-on: ubuntu-latest
+    if: github.ref_type != 'tag'
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    - uses: actions/setup-go@v4
+      with:
+        go-version: 1.20.6
+    
+    - name: Bump version
+      id: release
+      run: |
+        go install github.com/caarlos0/svu@latest
+        CURRENT=$(svu c | tr -d "v")
+        NEXT=$(svu n | tr -d "v")
+
+        echo "current=$CURRENT" >> $GITHUB_OUTPUT
+        echo "next=$NEXT" >> $GITHUB_OUTPUT
+        echo "Current version: v$CURRENT" >> $GITHUB_STEP_SUMMARY
+        echo "Next version: v$NEXT" >> $GITHUB_STEP_SUMMARY
+
+  tag:
+    runs-on: ubuntu-latest
+    needs: [version]
+    if: github.ref_type != 'tag' && needs.version.outputs.next != needs.version.outputs.current
+    steps:
+    - uses: actions/checkout@v3
+    - uses: actions/setup-go@v4
+      with:
+        go-version: 1.20.6
+
+    - name: Create GH tag
+      env:
+        TAG: ${{needs.version.outputs.next}}
+        GH_TOKEN: ${{ github.TOKEN }}
+      run: |
+        git tag v$TAG
+        git push --tags
